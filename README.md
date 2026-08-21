@@ -1,70 +1,96 @@
-# NBA Player Valuation Dashboard
+# NBA Player Valuation
 
-Ranks NBA players from three factors — **position-adjusted stats**, **age**, and
-**availability (injury proxy)** — in a runnable Streamlit dashboard.
+A multi-factor valuation model that scores every NBA player from position-adjusted production, age runway and availability — with each assumption exposed as a live control in a Streamlit dashboard.
 
-## Run it
+![Dashboard: rankings table and top-by-value chart](docs/img/dashboard.png)
+
+## What it does
+
+Given a season of per-game stats, the model assigns each player a transparent fair-value score and rank:
+
+```
+VALUE = STATS_SCORE × AGE_FACTOR × AVAIL_FACTOR      ("asset" view — worth going forward)
+VALUE = STATS_SCORE × AVAIL_FACTOR                   ("win-now" view — how good right now)
+```
+
+The composite is deliberately **multiplicative**, not additive: production you don't own — because the player is unavailable, or past their runway — isn't worth partial credit. Every parameter (prime age, decline rate, injury penalty severity, per-stat weights) is a sidebar slider, so you can interrogate how the ranking responds to your assumptions rather than trusting a black box.
+
+It runs out of the box on a bundled sample of 38 real players with approximate 2024–25 stats, and can pull live league-wide numbers from stats.nba.com.
+
+### Example output (bundled sample, default parameters, asset view)
+
+| RANK | PLAYER | POS | AGE | STATS_SCORE | AGE_FACTOR | AVAIL_FACTOR | VALUE |
+|---|---|---|---|---|---|---|---|
+| 1 | Shai Gilgeous-Alexander | PG | 26 | 81.6 | 1.04 | 0.96 | **81.7** |
+| 2 | Nikola Jokic | C | 29 | 92.7 | 0.95 | 0.92 | **81.4** |
+| 3 | Jayson Tatum | SF | 27 | 65.0 | 1.02 | 0.94 | **62.2** |
+| 4 | Anthony Edwards | SG | 23 | 56.7 | 1.10 | 0.98 | **61.2** |
+| 5 | Giannis Antetokounmpo | PF | 30 | 74.4 | 0.89 | 0.90 | **59.7** |
+
+The factors do real work. Jokic has clearly the best stat line (92.7), but on **asset value** Gilgeous-Alexander edges ahead on age runway; switch to **win-now** and Jokic goes first (85.6 vs 78.5). A 21-year-old Wembanyama makes the asset top eight despite playing only 46 games; a 40-year-old LeBron still posts an above-average stats score (60.0) but an age factor of 0.37 prices in the remaining runway; Embiid's 19-game season collapses his availability factor to 0.48 and drops him to last.
+
+## How it works
+
+**1. Stats score — position-adjusted, gap-preserving.** Each stat is z-scored *within its position group* (a centre's assists are judged against other centres), blended 25% with the league-wide z-score to damp noise from small position groups. The weighted z-total is standardised and mapped linearly to 0–100 (50 = league average, ±15 per standard deviation) — unlike a percentile rank, this preserves gaps, so a generational season sits far above a merely good one. Default weights:
+
+| PTS | AST | STL | BLK | TRB | TOV | TS% | MIN |
+|---|---|---|---|---|---|---|---|
+| 1.00 | 0.90 | 0.80 | 0.80 | 0.70 | −0.70 | 0.60 | 0.50 |
+
+Turnovers count against; minutes count for, so a 36-minute engine outranks a 20-minute bench player with similar per-game numbers.
+
+**2. Age factor — runway with elite resistance.** Full value at the prime age (default 28), a small capped upside bonus per year under it, exponential decline past it. The twist is **elite age resistance**: the decline rate is scaled down for players whose *current* production is elite — if a 36-year-old is still producing 2 SD above average, the collapse the age curve predicts hasn't materialised, so the full prior isn't applied. The protection fades automatically as the stats fade: it rewards sustained greatness, never reputation.
+
+**3. Availability factor — a softened injury proxy.** `(games played / season length) ^ 0.5`. The square root matters: per-game stats already earn nothing for missed games, so a linear multiplier would double-punish. When prior-season games-played columns exist (the fetcher writes them), they are averaged in as a multi-season durability signal, with rookie seasons skipped rather than counted as zero.
+
+### Architecture
+
+```
+fetch_data.py  ──(nba_api → stats.nba.com)──►  players.csv ─┐
+                                                            ├──►  valuation.py  ──►  app.py
+make_sample.py ──────────────────────►  sample_players.csv ─┘     (pure pandas/       (Streamlit +
+                                        (bundled fallback)         NumPy scoring)      Plotly UI)
+```
+
+- `valuation.py` — the scoring engine: pure, importable functions with no UI dependency.
+- `app.py` — Streamlit dashboard: ranking table, top-by-value chart, age-vs-value scatter, per-player percentile radar.
+- `fetch_data.py` — pulls live league per-game stats and team-roster positions via [`nba_api`](https://github.com/swar/nba_api), computes true shooting, and writes `players.csv`, which the app picks up automatically over the sample.
+
+Stack: Python, pandas, NumPy, Streamlit, Plotly.
+
+## Screenshots
+
+Age against value, coloured by position and sized by stats score — the shape of the age curve is visible in the data:
+
+![Age vs value scatter](docs/img/age-vs-value.png)
+
+Per-player breakdown: raw-stat percentiles against positional peers (turnovers inverted), alongside overall value and rank:
+
+![Player breakdown card](docs/img/player-breakdown.png)
+
+## Getting started
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Opens at `http://localhost:8501`. It runs immediately on a bundled sample of
-real players with *approximate* stats. For accurate live numbers:
+Opens at `http://localhost:8501` and runs immediately on the bundled sample. For accurate live numbers:
 
 ```bash
 python fetch_data.py --season 2024-25 --min-gp 15
 ```
 
-This writes `players.csv`, which the app picks up automatically over the sample.
+Note: stats.nba.com sometimes rate-limits or blocks datacentre IPs — run the fetcher from a home connection and re-run if a call times out (results are only written on success).
 
-## How the model works
+## Extending beyond basketball
 
-**Stats (position-adjusted).** Each stat is z-scored *within its position group*,
-so a centre's assists are judged against other centres and a point guard's
-against other point guards — the positional-expectations requirement. The
-weighted z-total is standardised league-wide and mapped linearly to a 0–100
-`STATS_SCORE` (50 = league average, ±15 per SD) — gap-preserving, so a
-generational season isn't squashed against a merely-good one the way a
-percentile rank would. Turnovers carry a negative weight; minutes played carry
-a positive one (a 36-minute engine beats a 20-minute bench role). Edit weights
-live in the sidebar.
+`valuation.py` is sport-agnostic by design: supply a CSV with `PLAYER, POS, AGE, GP` plus any sport's stat columns and a matching weights dict, and the position-adjustment, age and availability logic apply unchanged. Only the stat set and weights are basketball-specific.
 
-**Age.** A multiplier, not an added stat: exponential decline past the `prime`
-age (28 by default), plus a small *upside bonus* per year under prime (capped
-at +15%) — identical production from a 21-year-old is a better asset because
-of the runway ahead. **Elite age resistance**: the decline rate is scaled down
-for players whose *current* production is still elite — a 36-year-old
-producing 2 SD above average hasn't shown the collapse the curve predicts, so
-the full penalty isn't applied. The protection fades with the stats, so it
-rewards sustained greatness, never reputation.
+## Project context
 
-**Availability.** `(games_played / games_in_season) ** exponent`, as a
-multiplier. Default exponent 0.5 (square root) softens the penalty — per-game
-stats already earn nothing for missed games, so a linear multiplier
-double-punishes. If `GP_PREV1`/`GP_PREV2` columns exist (fetch_data.py writes
-them), they're averaged with `GP` for multi-season durability.
+Personal project, summer 2026. This is the standalone valuation engine behind [Agora](https://github.com/Mustafa-OS/agora-mvp), a fan-trading platform concept where athlete fair values move on news such as draft declarations, injuries and contract announcements — this repository is the pricing model that such a market needs underneath: given a stat line, produce a defensible, assumption-transparent value.
 
-**The model is multiplicative** — production you don't own (unavailable, or
-past the runway) isn't worth partial credit. Two views (sidebar):
-- `Asset value`: `VALUE = stats × age_factor × avail_factor` — worth going forward.
-- `Win-now`: `VALUE = stats × avail_factor` — how good right now, age ignored.
+---
 
-Position z-scores are blended 25% with league-wide z-scores (sidebar →
-Advanced) to damp noise from small or stacked position groups.
-
-## Files
-| file | purpose |
-|---|---|
-| `app.py` | Streamlit dashboard |
-| `valuation.py` | scoring logic (pure functions) |
-| `fetch_data.py` | pull live data → `players.csv` |
-| `make_sample.py` | regenerate `sample_players.csv` |
-| `sample_players.csv` | bundled fallback data |
-
-## Extending to other sports
-Keep `valuation.py` as the engine. Per sport, supply a CSV with `PLAYER, POS,
-AGE, GP` plus that sport's stat columns, and a matching `stat_weights` dict. The
-position-adjustment, age, and availability logic is sport-agnostic — only the
-stat set and weights change. That's the path to a cross-sport ranking.
+Built by Mustafa Suleman — MEng Design Engineering, Imperial College London · [LinkedIn](https://www.linkedin.com/in/mustafaosuleman/)
