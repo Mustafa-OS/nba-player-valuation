@@ -155,7 +155,8 @@ with right:
                  height=460, text="VALUE")
     fig.update_traces(texttemplate="%{text:.0f}", textposition="outside")
     fig.update_layout(margin=dict(l=0, r=10, t=10, b=0),
-                      yaxis_title="", xaxis_title="Value")
+                      yaxis=dict(title="", categoryorder="total ascending"),
+                      xaxis_title="Value")
     st.plotly_chart(fig, width="stretch")
 
 # ---------------------------------------------------------------- scatter
