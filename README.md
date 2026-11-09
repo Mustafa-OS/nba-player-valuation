@@ -1,23 +1,29 @@
-# NBA Player Valuation
+# 🏀 NBA Player Valuation
 
-A multi-factor valuation model that scores every NBA player from position-adjusted production, age runway and availability — with each assumption exposed as a live control in a Streamlit dashboard.
+**How much is an NBA player really worth? This model rates every player on production, age and fitness, and turns every assumption into a slider so you can see how the ranking changes.**
+
+Python · pandas · NumPy · Streamlit · Plotly · `nba_api` · The pricing engine behind [Agora](https://github.com/Mustafa-OS/agora-mvp)
 
 ![Dashboard: rankings table and top-by-value chart](docs/img/dashboard.png)
 
-## What it does
+## At a glance
 
-Given a season of per-game stats, the model assigns each player a transparent fair-value score and rank:
+- 🧮 **One transparent formula:** `VALUE = STATS × AGE × AVAILABILITY`. No black box: every weight and curve is a live control.
+- ⚖️ **Fair comparisons:** each stat is judged against players in the **same position**, so a centre's assists are compared with other centres'.
+- 🧓 **Smart ageing:** value declines after a player's prime, **unless they're still producing at an elite level**. It rewards sustained greatness, not reputation.
+- 🩹 **Injury-aware without double counting:** missed games reduce value, but softly (square root), because per-game stats already ignore games not played.
+- 🔌 **Runs out of the box** on 38 real players, or pulls live league-wide stats from stats.nba.com.
+
+## The formula
 
 ```
-VALUE = STATS_SCORE × AGE_FACTOR × AVAIL_FACTOR      ("asset" view — worth going forward)
-VALUE = STATS_SCORE × AVAIL_FACTOR                   ("win-now" view — how good right now)
+VALUE = STATS_SCORE × AGE_FACTOR × AVAIL_FACTOR      ("asset" view: worth going forward)
+VALUE = STATS_SCORE × AVAIL_FACTOR                   ("win-now" view: how good right now)
 ```
 
-The composite is deliberately **multiplicative**, not additive: production you don't own — because the player is unavailable, or past their runway — isn't worth partial credit. Every parameter (prime age, decline rate, injury penalty severity, per-stat weights) is a sidebar slider, so you can interrogate how the ranking responds to your assumptions rather than trusting a black box.
+It multiplies rather than adds on purpose: production you can't count on, because the player is injured or past their prime, shouldn't earn partial credit.
 
-It runs out of the box on a bundled sample of 38 real players with approximate 2024–25 stats, and can pull live league-wide numbers from stats.nba.com.
-
-### Example output (bundled sample, default parameters, asset view)
+## Example output
 
 | RANK | PLAYER | POS | AGE | STATS_SCORE | AGE_FACTOR | AVAIL_FACTOR | VALUE |
 |---|---|---|---|---|---|---|---|
@@ -68,7 +74,7 @@ Per-player breakdown: raw-stat percentiles against positional peers (turnovers i
 
 ![Player breakdown card](docs/img/player-breakdown.png)
 
-## Getting started
+## Run it
 
 ```bash
 pip install -r requirements.txt
@@ -83,14 +89,14 @@ python fetch_data.py --season 2024-25 --min-gp 15
 
 Note: stats.nba.com sometimes rate-limits or blocks datacentre IPs — run the fetcher from a home connection and re-run if a call times out (results are only written on success).
 
-## Extending beyond basketball
+## Beyond basketball
 
 `valuation.py` is sport-agnostic by design: supply a CSV with `PLAYER, POS, AGE, GP` plus any sport's stat columns and a matching weights dict, and the position-adjustment, age and availability logic apply unchanged. Only the stat set and weights are basketball-specific.
 
-## Project context
+## About
 
-Personal project, summer 2026. This is the standalone valuation engine behind [Agora](https://github.com/Mustafa-OS/agora-mvp), a fan-trading platform concept where athlete fair values move on news such as draft declarations, injuries and contract announcements — this repository is the pricing model that such a market needs underneath: given a stat line, produce a defensible, assumption-transparent value.
+Personal project, summer 2026. It's the standalone valuation engine behind [Agora](https://github.com/Mustafa-OS/agora-mvp), a fan-trading platform where athlete prices move on news like draft declarations, injuries and contracts. Given a stat line, it produces a defensible value with every assumption visible.
 
 ---
 
-Built by Mustafa Suleman — MEng Design Engineering, Imperial College London · [LinkedIn](https://www.linkedin.com/in/mustafaosuleman/)
+<sub>Built by <b>Mustafa Suleman</b>, MEng Design Engineering, Imperial College London · <a href="https://github.com/Mustafa-OS">More projects</a> · <a href="https://www.linkedin.com/in/mustafaosuleman/">LinkedIn</a></sub>
